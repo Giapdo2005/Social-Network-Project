@@ -3,12 +3,14 @@
 
 #include <set>
 #include <string>
+#include "post.h"
 
 class User {
 public:
 	//pre: None
 	//post: Create a default User
 	User();
+    ~User();
 	//pre: None
 	//post: Create a User with all the parameters
 	User(int id, std::string name, int year, int zip, std::set<int> friends);
@@ -36,13 +38,29 @@ public:
 	//pre: None
 	//post: Help remove whitespace from getName()
 	std::string trim(std::string& name);
-
+	//pre: None
+	//post: 
+	void addPost(Post*);
+	//pre: None
+	//post: a post is added to user
+	std::vector<Post*> getPosts();
+	//pre: None
+	//post:
+    std::vector<std::string> getPostsStrings(int howMany, bool showOnlyPublic);
+    //pre: None
+    //post: get messages size
+    int getSize();
+    //pre: None
+    //post: delete post from messages_
+    void deletePost(int i);
+    void refreshPostsTable();
 private:
 	int id_;
 	std::string name_;
 	int year_;
 	int zip_;
 	std::set<int> friends_;
+	std::vector<Post*> messages_;
 };
 
 #endif

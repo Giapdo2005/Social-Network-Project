@@ -5,8 +5,13 @@
 #include <set>
 #include <string>
 #include <sstream>
+#include <algorithm>
 #include "network.h"
 #include "user.h"
+
+Network::Network() {
+	messageIdCounter = 0;
+}
 
 User* Network::getUser(int id) {
 	for (std::size_t i = 0; i < users_.size(); i++) {
@@ -100,7 +105,7 @@ void Network::readUsers(char* fname) {
 	std::string line;
 
 	if(fileIn.is_open()) {
-		std::cout << "File opened successfully" << std::endl;
+		//std::cout << "File opened successfully" << std::endl;
 		if (!(getline(fileIn, line))) {
 			std::cout << "Failed to read size" << std::endl;
 			return;
@@ -179,7 +184,7 @@ void Network::readUsers(char* fname) {
 void Network::writeUsers(char* fname) {
 	std::ofstream fileOut(fname);
 	if (fileOut.is_open()) {
-		std::cout << "File opened successfully" << std::endl;
+		//std::cout << "File opened successfully" << std::endl;
 
 		fileOut << users_.size() << std::endl;
 		int size;
@@ -204,4 +209,330 @@ void Network::writeUsers(char* fname) {
 
 	fileOut.close();
 }
+
+std::vector<int> Network::shortestPath(int from, int to) {
+	std::queue<int> q;
+	std::vector<bool> visited (users_.size(), false);
+	std::vector<int> prev (users_.size(), - 1);
+
+	visited[from] = true;
+	q.push(from);
+
+	while (q.size() > 0) {
+		int cur = q.front();
+		q.pop();
+
+		for (int neighbor : users_[cur]->getFriends()) {
+			if (!visited[neighbor]) {
+				prev[neighbor] = cur;
+				visited[neighbor] = true;
+				q.push(neighbor);
+			}
+		}
+	}
+
+	std::vector<int> path;
+	int cur = to;
+	while (cur != -1) {
+		path.push_back(cur);
+		cur = prev[cur];
+	}
+	reverse(path.begin(), path.end());
+	return path;
+}
+
+std::vector<int> Network::distanceUser(int from, int& to, int distance) {
+	std::queue<int> q;
+	std::vector<bool> visited (users_.size(), false);
+	std::vector<int> prev (users_.size(), -1);
+
+	visited[from] = true;
+	q.push(from);
+
+	std::vector<int> userAtDistance;
+
+	while (q.size() > 0 && distance >= 0) {
+		int size = q.size();
+		for (int i = 0; i < size; i++) {
+			int cur = q.front();
+			q.pop();
+			if (distance == 0) {
+				to = cur;
+				userAtDistance.push_back(cur);
+				std::vector<int> path;
+				while (cur != -1) {
+					path.push_back(cur);
+					cur = prev[cur];
+				}
+				reverse(path.begin(), path.end());
+				return path;
+			}
+			else {
+				for (int neighbor : users_[cur]->getFriends())
+					if (!visited[neighbor]) {
+						prev[neighbor] = cur;
+						visited[neighbor] = true;
+						q.push(neighbor);
+					}
+			}
+		}
+		distance--;
+	}
+	to = -1;
+	return {};
+}
+
+std::vector<int> Network::suggestFriends(int who, int& score) {
+    std::set<int> whosFriends = users_[who]->getFriends();
+    std::vector<int> user_score (users_.size(), 0);
+
+    for (int friendId : whosFriends) {
+        for (int mutualFriendId : users_[friendId]->getFriends()) {
+            if (mutualFriendId != who && whosFriends.find(mutualFriendId) == whosFriends.end()) {
+                user_score[mutualFriendId]++;
+            }
+        }
+    }
+
+    std::vector<int> suggestedFriends;
+    score = 0;
+    for (std::size_t i = 0; i < user_score.size(); i++) {
+        if (user_score[i] > score) {
+            score = user_score[i];
+            suggestedFriends.clear();
+            suggestedFriends.push_back(i);
+        } else if (user_score[i] == score && score > 0) {
+            suggestedFriends.push_back(i);
+        }
+    }
+    return suggestedFriends;
+}
+
+std::vector<std::vector<int> > Network::groups() {
+	std::stack<int> s;
+	std::vector<bool> visited (users_.size(), false);
+	std::vector<std::vector<int> > groups;
+
+	for (std::size_t i = 0; i < users_.size(); i++) {
+		std::vector<int> group;
+		if (!visited[i]) {
+			s.push(i);
+			visited[i] = true;
+		}
+		while (s.size() > 0) {
+			int cur = s.top();
+			s.pop();
+			group.push_back(cur);
+			for (int neighbor : users_[cur]->getFriends()) {
+				if (!visited[neighbor]) {
+					visited[neighbor] = true;
+					s.push(neighbor);
+				}
+			}
+		}
+		if (!group.empty()) {
+			groups.push_back(group);
+		}
+	}
+	return groups;
+}
+
+int Network::diameter() {
+	int diameter = 0;
+  for (std::size_t from = 0; from < users_.size(); from++) {
+		std::vector<bool> visited (users_.size(), false);
+		std::vector<int> dist(users_.size(), -1);
+		std::queue<int> q;
+
+    visited[from] = true;
+    q.push(from);
+    dist[from] = 0;
+    while (q.size() > 0) {
+      int cur = q.front();
+      q.pop();
+      for (int neighbor : users_[cur]->getFriends()) {
+				if (!visited[neighbor]) {
+					dist[neighbor] = dist[cur] + 1;
+					visited[neighbor] = true;
+					q.push(neighbor);
+				}
+			}
+    }
+		for (std::size_t i = 0; i < users_.size(); i++) {
+			if (dist[i] == -1) return -1;
+			diameter = std::max(diameter, dist[i]);
+		}
+  }
+	return diameter;
+}
+
+std::string Network::trim(std::string& data) {
+    std::size_t start = 0; 
+    std::size_t end = data.size(); 
+
+    while (start < end && std::isspace(data[start])) {
+        ++start;
+    }
+
+    while (end > start && std::isspace(data[end - 1])) {
+        --end;
+    }
+
+    return data.substr(start, end - start);
+}
+
+
+void Network::addPost(int ownerId, std::string message, int likes, bool isInComing, std::string authorName, bool isPublic) {
+	int messageId = messageIdCounter++;
+	if (isInComing) {
+		IncomingPost* post = new IncomingPost(messageId, ownerId, message, likes, isPublic, authorName);
+		users_[ownerId]->addPost(post);
+	}
+	else {
+		Post* post = new Post(messageId, ownerId, message, likes);
+		users_[ownerId]->addPost(post);
+	}
+}
+
+std::vector<std::string> Network::getPostsString(int ownerId, int howMany, bool showOnlyPublic) {
+	return users_[ownerId]->getPostsStrings(howMany, showOnlyPublic);
+}
+
+
+int Network::readPosts(char* fname) {
+	std::ifstream fileIn(fname);
+
+	if (!fileIn) {
+		return -1;
+	}
+
+	std::cout<< fname << std::endl;
+	std::string line;
+	int size;
+	if (!getline(fileIn, line)) {
+		std::cout<< "Can't read size" << std::endl;
+		return -1;
+	}
+	else {
+		std::cout << "Size: " << line << std::endl;
+		size = stoi(line);
+	}
+    int messageId, maxMessageId = 0;
+	std::string message;
+	int ownerId;
+	int likes;
+	std::string author;
+	for (std::size_t i = 0; i < size; i++) {
+		//read messageId
+		if (getline(fileIn, line)) {
+			messageId = stoi(line);
+            if (messageId > maxMessageId) maxMessageId = messageId;
+		} else {
+			std::cout << "Error reading in messageId" << std::endl;
+			continue;
+		}
+		//read message text
+		if (getline(fileIn, line)) {
+            message = trim(line);
+		} else {
+			std::cout << "Error reading in message" << std::endl;
+			continue;
+		}
+		//read ownerId
+		if (getline(fileIn, line)) {
+			ownerId = stoi(line);
+		} else {
+			std::cout << "Error reading in ownerId" << std::endl;
+			continue;
+		}
+		//read likes
+		if (getline(fileIn, line)) {
+			likes = stoi(line);
+		} else {
+			std::cout << "Error reading in likes" << std::endl;
+			continue;
+		}
+		//read public or private or empty line then have another conditional if needed
+		if (getline(fileIn, line)) {
+			if (trim(line) == "public" || trim(line) == "private") {
+				bool isPublic = (trim(line) == "public");
+
+				if (getline(fileIn, line)) {
+						author = line;
+				} else {
+						std::cout << "Error getting author" << std::endl;
+						continue;
+				}
+
+				IncomingPost* post = new IncomingPost(messageId, ownerId, message, likes, isPublic, trim(author));
+				users_[ownerId]->addPost(post);
+			} 
+			else {
+				Post* post = new Post(messageId, ownerId, message, likes);
+				users_[ownerId]->addPost(post);
+				getline(fileIn, line); 
+			}
+			}
+		}
+    messageIdCounter = maxMessageId + 1;
+	return 0;
+}
+
+int Network::writePosts(char* fname) {
+	std::ofstream fileOut(fname);
+	if (fileOut.is_open()) {
+		std::cout << "File written to successfully" << std::endl;
+		std::cout << fname << std::endl;
+
+		std::vector<Post*> allPosts;
+
+		for (std::size_t i = 0; i < users_.size(); i++) {
+			if (!users_[i]) {
+				std::cerr << "Error: User " << i << " is null" << std::endl;
+				continue;
+      }
+			std::vector<Post*> posts = users_[i]->getPosts();
+			if (posts.empty()) {
+				std::cout << "No posts for user " << i << std::endl;
+				continue;
+			}
+
+			allPosts.insert(allPosts.end(), posts.begin(), posts.end());
+		}
+
+		std::cout << allPosts.size() << std::endl;
+ 		fileOut << allPosts.size() << std::endl;
+		std::sort(allPosts.begin(), allPosts.end(), compare);
+
+		for (Post* post: allPosts) {
+			if (!post) {
+                std::cerr << "Error: Post is null" << std::endl;
+                continue;
+            }
+
+			fileOut << post->getMessageId() << std::endl;
+			fileOut << "\t" << post->getMessage() << std::endl;
+            fileOut << "\t" << post->getOwnerId() << std::endl;
+			fileOut << "\t" << post->getLikes() << std::endl;
+
+
+			if (!post->getAuthor().empty()) { 
+				fileOut << "\t" << (post->getIsPublic() ? "public" : "private") << std::endl;
+				fileOut << "\t" << post->getAuthor() << std::endl;
+			} else {
+				fileOut << "\n\n";
+			}
+		}
+	}
+	return 0;
+}
+
+bool Network::compare(Post* post1, Post* post2) {
+	return post1->getMessageId() < post2->getMessageId();
+}
+
+void Network::deletePost(int userId, int i) {
+    users_[userId]->deletePost(i);
+}
+
 
